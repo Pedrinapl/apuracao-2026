@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Apuração 2º Turno 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: placar nacional no topo → mapa-mosaico por UF com detalhe → governadores → tabela completa */
+:root {
+  --bg: #f3f5f2;
+  --surface: #ffffff;
+  --ink: #18221f;
+  --muted: #5d6b66;
+  --line: #d9e0dc;
+  --tile-empty: #e4e9e6;
+  --a: #1f6d8a;        /* candidato de menor número */
+  --b: #b9741b;        /* candidato de maior número */
+  --live: #c23b2e;
+  --ok: #2e7d4f;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111715; --surface: #19211e; --ink: #e6ece9; --muted: #95a39e; --line: #2b3632;
+    --tile-empty: #243029; --a: #4fa6c8; --b: #e0a04a; --live: #ef6a5c; --ok: #5cbf86;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111715; --surface: #19211e; --ink: #e6ece9; --muted: #95a39e; --line: #2b3632;
+  --tile-empty: #243029; --a: #4fa6c8; --b: #e0a04a; --live: #ef6a5c; --ok: #5cbf86;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: .01em; }
+h1 { font-size: 2rem; line-height: 1.05; }
+h2 { font-size: 1.35rem; text-transform: uppercase; letter-spacing: .06em; }
+.eyebrow { font: 500 .72rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* cabeçalho */
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; border-bottom: 2px solid var(--ink); padding-bottom: 14px; }
+.title-block { display: grid; gap: 6px; }
+.status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: .85rem; color: var(--muted); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.live { background: var(--live); animation: pulse 1.6s ease-in-out infinite; }
+.dot.err { background: var(--live); }
+@keyframes pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .dot.live { animation: none; } .bar > span { transition: none !important; } }
+button {
+  font: 500 .85rem var(--font-body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; cursor: pointer;
+}
+button:hover { border-color: var(--ink); }
+button:disabled { opacity: .5; cursor: wait; }
+button:focus-visible, .tile:focus-visible, tr:focus-visible { outline: 2px solid var(--a); outline-offset: 2px; }
+.notice { background: var(--surface); border: 1px solid var(--live); border-radius: 8px; padding: 12px 14px; font-size: .9rem; }
+.notice a { color: inherit; }
+
+/* placar */
+.scoreboard { display: grid; gap: 14px; }
+.duel { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cand { display: grid; gap: 2px; min-width: 0; }
+.cand.right { text-align: right; }
+.cand .nm { font: 600 1.15rem/1.15 var(--font-display); text-transform: uppercase; letter-spacing: .03em; overflow-wrap: anywhere; }
+.cand .meta { font-size: .8rem; color: var(--muted); }
+.cand .pct { font: 700 clamp(2.6rem, 9vw, 4.2rem)/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.cand.slot-a .pct, .cand.slot-a .nm { color: var(--a); }
+.cand.slot-b .pct, .cand.slot-b .nm { color: var(--b); }
+.badge { display: inline-block; font: 600 .68rem/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; background: var(--ok); color: var(--surface); padding: 4px 6px; border-radius: 3px; vertical-align: middle; }
+.bar { position: relative; display: flex; height: 18px; border-radius: 3px; overflow: hidden; background: var(--tile-empty); }
+.bar > span { display: block; height: 100%; transition: width .6s ease; }
+.bar .sa { background: var(--a); } .bar .sb { background: var(--b); }
+.bar::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; border-left: 2px dashed var(--ink); opacity: .55; }
+.bar.thin { height: 8px; }
+.bar.thin::after { top: -2px; bottom: -2px; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: .82rem; color: var(--muted); }
+.facts b { color: var(--ink); font-weight: 600; }
+.progress { display: grid; gap: 4px; }
+.progress .track { height: 4px; background: var(--tile-empty); border-radius: 2px; overflow: hidden; }
+.progress .track span { display: block; height: 100%; background: var(--ink); }
+
+/* mapa + detalhe */
+.map-section { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 760px) { .map-section { grid-template-columns: minmax(0, 1fr); } }
+.map { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 420px; }
+.tile {
+  aspect-ratio: 1; max-width: 100%; border: 0; border-radius: 4px; padding: 0;
+  background: var(--tile-empty); color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font: 600 .95rem/1 var(--font-display); cursor: pointer; position: relative;
+}
+.tile small { font: 400 .62rem/1.2 var(--font-mono); opacity: .85; }
+.tile.on-color { color: #fff; }
+.tile[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
+.tile.gov::after { content: ""; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .78rem; color: var(--muted); margin-top: 10px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.detail { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: grid; gap: 16px; min-width: 0; }
+.race { display: grid; gap: 8px; }
+.race + .race { border-top: 1px solid var(--line); padding-top: 14px; }
+.line { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: .9rem; }
+.line .who { min-width: 0; overflow-wrap: anywhere; }
+.line .val { font: 600 1.25rem/1 var(--font-display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.line.slot-a .val { color: var(--a); } .line.slot-b .val { color: var(--b); }
+.empty { color: var(--muted); font-size: .88rem; }
+
+/* governadores */
+.gov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.gov-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.gov-card header { border: 0; padding: 0; align-items: baseline; }
+.gov-card h3 { font-size: 1.2rem; }
+
+/* tabela */
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: .88rem; min-width: 480px; }
+th, td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+th { font: 500 .7rem var(--font-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+th.ca { color: var(--a); } th.cb { color: var(--b); }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--bg); }
+tbody tr:last-child td { border-bottom: 0; }
+td .lead-a { color: var(--a); font-weight: 600; } td .lead-b { color: var(--b); font-weight: 600; }
+footer { font-size: .78rem; color: var(--muted); display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
+footer a { color: inherit; }
+code { font-family: var(--font-mono); font-size: .9em; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="title-block">
+      <span class="eyebrow">Eleições Gerais 2026 · 2º turno · 25 out</span>
+      <h1>Apuração em tempo real</h1>
+    </div>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">Conectando ao TSE…</span>
+      <button type="button" id="refreshBtn">Atualizar agora</button>
+    </div>
+  </header>
+
+  <div class="notice" id="notice" hidden></div>
+
+  <section class="scoreboard" aria-labelledby="presTitle">
+    <span class="eyebrow" id="presTitle">Presidente · Brasil</span>
+    <div class="duel" id="presDuel"><p class="empty">Aguardando dados…</p></div>
+    <div class="bar" id="presBar" aria-hidden="true"><span class="sa" style="width:0"></span><span class="sb" style="width:0"></span></div>
+    <div class="progress">
+      <div class="facts" id="presFacts"></div>
+      <div class="track"><span id="presProg" style="width:0"></span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="mapTitle" style="display:grid;gap:14px">
+    <h2 id="mapTitle">Presidente por estado</h2>
+    <div class="map-section">
+      <div>
+        <div class="map" id="map" role="group" aria-label="Mapa por UF"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="detail" id="detail" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="govTitle" style="display:grid;gap:14px">
+    <h2 id="govTitle">Governador · 2º turno</h2>
+    <div class="gov-grid" id="govGrid"></div>
+  </section>
+
+  <section aria-labelledby="tableTitle" style="display:grid;gap:14px">
+    <h2 id="tableTitle">Todas as UFs</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr id="tableHead"><th>UF</th><th class="ca">—</th><th class="cb">—</th><th>Seções apuradas</th></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <span>Fonte: arquivos JSON oficiais do TSE (<code>resultados.tse.jus.br</code>), eleições 6258 (presidente) e 6260 (governador). Atualização automática a cada 60 segundos enquanto a página estiver aberta.</span>
+    <span>Percentuais sobre votos válidos. Resultado oficial no <a href="https://resultados.tse.jus.br/oficial/app/index.html" target="_blank" rel="noopener">Portal Resultados do TSE</a>.</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const BASE = 'https://resultados.tse.jus.br/oficial/ele2026';
+  const ELE_PRES = 6258, ELE_GOV = 6260;
+  const REFRESH_S = 60;
+
+  const UFS = {
+    AC:['Acre',0,2], AL:['Alagoas',6,3], AP:['Amapá',4,0], AM:['Amazonas',1,1], BA:['Bahia',4,3],
+    CE:['Ceará',5,1], DF:['Distrito Federal',3,4], ES:['Espírito Santo',5,4], GO:['Goiás',3,3],
+    MA:['Maranhão',4,1], MT:['Mato Grosso',2,2], MS:['Mato Grosso do Sul',2,4], MG:['Minas Gerais',4,4],
+    PA:['Pará',3,1], PB:['Paraíba',6,2], PR:['Paraná',2,5], PE:['Pernambuco',5,2], PI:['Piauí',4,2],
+    RJ:['Rio de Janeiro',4,5], RN:['Rio Grande do Norte',6,1], RS:['Rio Grande do Sul',2,7],
+    RO:['Rondônia',1,2], RR:['Roraima',2,0], SC:['Santa Catarina',2,6], SP:['São Paulo',3,5],
+    SE:['Sergipe',5,3], TO:['Tocantins',3,2], ZZ:['Exterior',6,7]
+  };
+  const GOV_UFS = ['AC','AM','DF','ES','RN','TO'];
+
+  const state = { pres: {}, gov: {}, slots: null, selected: 'DF', loading: false, lastOk: null, failUntil: {} };
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmtPct = n => Number.isFinite(n) ? n.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '%' : '—';
+  const fmtInt = n => Number.isFinite(n) ? Math.round(n).toLocaleString('pt-BR') : '—';
+  const num = v => {
+    if (typeof v === 'number') return v;
+    if (v == null || v === '') return NaN;
+    const s = String(v).trim();
+    return s.includes(',') ? parseFloat(s.replace(/\./g, '').replace(',', '.')) : parseFloat(s);
+  };
+
+  function fileUrl(ele, uf, cargo) {
+    const u = uf.toLowerCase();
+    return `${BASE}/${ele}/dados/${u}/${u}-c${String(cargo).padStart(4,'0')}-e${String(ele).padStart(6,'0')}-u.json`;
+  }
+
+  // Lê o arquivo unificado (EA20) de forma tolerante à estrutura
+  function parse(json) {
+    const found = new Map();
+    (function walk(o, party) {
+      if (Array.isArray(o)) { o.forEach(x => walk(x, party)); return; }
+      if (!o || typeof o !== 'object') return;
+      const sg = o.sg || party;
+      if (Array.isArray(o.cand)) {
+        o.cand.forEach(c => {
+          const key = String(c.n ?? c.sqcand ?? c.nm);
+          if (!found.has(key)) found.set(key, {
+            n: String(c.n ?? ''), nm: c.nm || c.nmu || 'Candidato', sg: c.sg || sg || '',
+            vap: num(c.vap), pvap: num(c.pvap), eleito: c.e === 's'
+          });
+        });
+      }
+      for (const k in o) if (k !== 'cand' && o[k] && typeof o[k] === 'object') walk(o[k], sg);
+    })(json, '');
+    const cands = [...found.values()].sort((x, y) => (y.vap || 0) - (x.vap || 0));
+    const s = json.s || {}, v = json.v || {}, e = json.e || {};
+    return {
+      cands,
+      pst: num(s.pst ?? json.pst),
+      final: json.and === 'f',
+      when: [json.dg, json.hg].filter(Boolean).join(' '),
+      pvb: num(v.pvb ?? json.pvb),
+      pvn: num(v.ptvn ?? v.pvn ?? json.ptvn ?? json.pvn),
+      pa: num(e.pa ?? json.pa),
+      vv: num(v.vv ?? json.vv)
+    };
+  }
+
+  async function get(url) {
+    const until = state.failUntil[url];
+    if (until && Date.now() < until) throw new Error('aguardando');
+    const r = await fetch(url, { cache: 'no-cache' });
+    if (!r.ok) {
+      // Evita insistir em arquivo inexistente (o TSE pode bloquear IP após muitos 404)
+      if (r.status === 404) state.failUntil[url] = Date.now() + 3 * 60 * 1000;
+      throw new Error('HTTP ' + r.status);
+    }
+    delete state.failUntil[url];
+    return parse(await r.json());
+  }
+
+  function ensureSlots(data) {
+    if (state.slots || !data || data.cands.length < 2) return;
+    const byNum = [...data.cands].sort((x, y) => num(x.n) - num(y.n));
+    state.slots = { [byNum[0].n]: 'a', [byNum[1].n]: 'b' };
+  }
+  const slotOf = (c, slots) => (slots || state.slots || {})[c.n] || 'a';
+  const localSlots = data => {
+    const byNum = [...data.cands].sort((x, y) => num(x.n) - num(y.n));
+    return byNum.length >= 2 ? { [byNum[0].n]: 'a', [byNum[1].n]: 'b' } : {};
+  };
+
+  async function refresh() {
+    if (state.loading) return;
+    state.loading = true;
+    $('refreshBtn').disabled = true;
+    setStatus('loading');
+    const jobs = [];
+    jobs.push(get(fileUrl(ELE_PRES, 'BR', 1)).then(d => state.pres.BR = d).catch(() => {}));
+    Object.keys(UFS).forEach(uf => jobs.push(get(fileUrl(ELE_PRES, uf, 1)).then(d => state.pres[uf] = d).catch(() => {})));
+    GOV_UFS.forEach(uf => jobs.push(get(fileUrl(ELE_GOV, uf, 3)).then(d => state.gov[uf] = d).catch(() => {})));
+    const before = JSON.stringify(Object.keys(state.pres));
+    await Promise.all(jobs);
+    state.loading = false;
+    $('refreshBtn').disabled = false;
+    const any = Object.keys(state.pres).length + Object.keys(state.gov).length;
+    if (any) { state.lastOk = new Date(); setStatus('ok'); $('notice').hidden = true; }
+    else setStatus('error');
+    ensureSlots(state.pres.BR || Object.values(state.pres)[0]);
+    render();
+  }
+
+  let countdown = REFRESH_S;
+  function setStatus(kind) {
+    const dot = $('dot'), t = $('statusText');
+    dot.className = 'dot' + (kind === 'ok' ? ' live' : kind === 'error' ? ' err' : '');
+    if (kind === 'loading') t.textContent = 'Buscando dados do TSE…';
+    if (kind === 'ok') {
+      const tse = state.pres.BR?.when ? ` · TSE ${state.pres.BR.when}` : '';
+      t.textContent = `Atualizado às ${state.lastOk.toLocaleTimeString('pt-BR')}${tse}`;
+    }
+    if (kind === 'error') {
+      t.textContent = 'Sem conexão com o TSE';
+      const n = $('notice');
+      n.hidden = false;
+      n.innerHTML = 'Não consegui ler os arquivos do TSE. Abra este arquivo direto no navegador (Chrome, Safari, Firefox) com internet; visualizadores de arquivo e prévias bloqueiam a conexão. Se continuar, acompanhe no <a href="https://resultados.tse.jus.br/oficial/app/index.html" target="_blank" rel="noopener">Portal Resultados</a>.';
+    }
+  }
+
+  function candBlock(c, slot, align) {
+    if (!c) return `<div class="cand"><p class="empty">—</p></div>`;
+    return `<div class="cand slot-${slot}${align ? ' right' : ''}">
+      <span class="nm">${esc(c.nm)} ${c.eleito ? '<span class="badge">Eleito</span>' : ''}</span>
+      <span class="meta">${esc(c.n)}${c.sg ? ' · ' + esc(c.sg) : ''}</span>
+      <span class="pct">${fmtPct(c.pvap)}</span>
+      <span class="meta num">${fmtInt(c.vap)} votos</span>
+    </div>`;
+  }
+
+  function twoOf(data, slots) {
+    slots = slots || state.slots || localSlots(data);
+    const a = data.cands.find(c => slots[c.n] === 'a');
+    const b = data.cands.find(c => slots[c.n] === 'b');
+    return [a, b];
+  }
+
+  function barHtml(a, b, thin) {
+    const pa = a?.pvap || 0, pb = b?.pvap || 0;
+    return `<div class="bar${thin ? ' thin' : ''}" aria-hidden="true"><span class="sa" style="width:${pa}%"></span><span class="sb" style="width:${pb}%"></span></div>`;
+  }
+
+  function raceHtml(title, data, slots) {
+    if (!data) return `<div class="race"><span class="eyebrow">${esc(title)}</span><p class="empty">Sem dados ainda.</p></div>`;
+    const [a, b] = twoOf(data, slots);
+    const line = (c, s) => c ? `<div class="line slot-${s}"><span class="who">${esc(c.nm)}${c.sg ? ' <span class="eyebrow">' + esc(c.sg) + '</span>' : ''} ${c.eleito ? '<span class="badge">Eleito</span>' : ''}</span><span class="val">${fmtPct(c.pvap)}</span></div>` : '';
+    return `<div class="race">
+      <span class="eyebrow">${esc(title)} · ${fmtPct(data.pst)} das seções</span>
+      ${line(a, 'a')}${line(b, 'b')}
+      ${barHtml(a, b, true)}
+    </div>`;
+  }
+
+  function render() {
+    // Placar nacional
+    const br = state.pres.BR;
+    if (br && br.cands.length) {
+      const [a, b] = twoOf(br);
+      $('presDuel').innerHTML = candBlock(a, 'a') + candBlock(b, 'b', true);
+      const bar = $('presBar').children;
+      bar[0].style.width = (a?.pvap || 0) + '%';
+      bar[1].style.width = (b?.pvap || 0) + '%';
+      $('presFacts').innerHTML = [
+        `Seções totalizadas <b class="num">${fmtPct(br.pst)}</b>`,
+        `Brancos <b class="num">${fmtPct(br.pvb)}</b>`,
+        `Nulos <b class="num">${fmtPct(br.pvn)}</b>`,
+        `Abstenção <b class="num">${fmtPct(br.pa)}</b>`,
+        br.final ? '<b>Totalização final</b>' : ''
+      ].filter(Boolean).map(x => `<span>${x}</span>`).join('');
+      $('presProg').style.width = (br.pst || 0) + '%';
+    }
+
+    // Legenda e cabeçalho da tabela
+    const ref = br || Object.values(state.pres)[0];
+    if (ref && state.slots) {
+      const [a, b] = twoOf(ref);
+      $('legend').innerHTML = `<span><i style="background:var(--a)"></i>${esc(a?.nm || '')} lidera</span><span><i style="background:var(--b)"></i>${esc(b?.nm || '')} lidera</span><span>Cor mais forte = vantagem maior · ponto = tem 2º turno para governador</span>`;
+      $('tableHead').innerHTML = `<th>UF</th><th class="ca">${esc(a?.nm || '—')}</th><th class="cb">${esc(b?.nm || '—')}</th><th>Seções apuradas</th>`;
+    }
+
+    // Mapa-mosaico
+    const map = $('map');
+    if (!map.children.length) {
+      Object.entries(UFS).forEach(([uf, [name, col, row]]) => {
+        const t = document.createElement('button');
+        t.type = 'button'; t.className = 'tile' + (GOV_UFS.includes(uf) ? ' gov' : '');
+        t.id = 'tile-' + uf; t.style.gridColumn = col + 1; t.style.gridRow = row + 1;
+        t.setAttribute('aria-label', name);
+        t.addEventListener('click', () => select(uf));
+        map.appendChild(t);
+      });
+    }
+    Object.keys(UFS).forEach(uf => {
+      const t = $('tile-' + uf), d = state.pres[uf];
+      t.setAttribute('aria-pressed', String(uf === state.selected));
+      let label = `${uf}<small>—</small>`, bg = '', on = false;
+      if (d && d.cands.length >= 2 && state.slots) {
+        const [a, b] = twoOf(d);
+        const pa = a?.pvap || 0, pb = b?.pvap || 0;
+        if (pa + pb > 0) {
+          const lead = pa >= pb ? 'a' : 'b';
+          const margin = Math.abs(pa - pb);
+          const strength = Math.min(100, 35 + margin * 2.2);
+          bg = `color-mix(in srgb, var(--${lead}) ${strength}%, var(--tile-empty))`;
+          on = strength >= 60;
+          label = `${uf}<small>${Math.max(pa, pb).toFixed(1).replace('.', ',')}%</small>`;
+        }
+      }
+      t.innerHTML = label;
+      t.style.background = bg;
+      t.classList.toggle('on-color', on);
+    });
+
+    renderDetail();
+
+    // Governadores
+    $('govGrid').innerHTML = GOV_UFS.map(uf => {
+      const d = state.gov[uf];
+      if (!d || !d.cands.length) return `<article class="gov-card"><header><h3>${esc(UFS[uf][0])}</h3><span class="eyebrow">${uf}</span></header><p class="empty">Sem dados ainda.</p></article>`;
+      const slots = localSlots(d);
+      const [a, b] = twoOf(d, slots);
+      const line = (c, s) => c ? `<div class="line slot-${s}"><span class="who">${esc(c.nm)}${c.sg ? ' <span class="eyebrow">' + esc(c.sg) + '</span>' : ''} ${c.eleito ? '<span class="badge">Eleito</span>' : ''}</span><span class="val">${fmtPct(c.pvap)}</span></div>` : '';
+      return `<article class="gov-card">
+        <header><h3>${esc(UFS[uf][0])}</h3><span class="eyebrow num">${fmtPct(d.pst)} apurado</span></header>
+        ${line(a, 'a')}${line(b, 'b')}
+        ${barHtml(a, b, true)}
+      </article>`;
+    }).join('');
+
+    // Tabela
+    $('tableBody').innerHTML = Object.entries(UFS).sort((x, y) => x[1][0].localeCompare(y[1][0], 'pt-BR')).map(([uf, [name]]) => {
+      const d = state.pres[uf];
+      let ca = '—', cb = '—', pst = '—';
+      if (d && state.slots) {
+        const [a, b] = twoOf(d);
+        const pa = a?.pvap, pb = b?.pvap;
+        ca = `<span class="${pa > pb ? 'lead-a' : ''}">${fmtPct(pa)}</span>`;
+        cb = `<span class="${pb > pa ? 'lead-b' : ''}">${fmtPct(pb)}</span>`;
+        pst = fmtPct(d.pst);
+      }
+      return `<tr tabindex="0" data-uf="${uf}"><td>${esc(name)} <span class="eyebrow">${uf}</span></td><td>${ca}</td><td>${cb}</td><td>${pst}</td></tr>`;
+    }).join('');
+  }
+
+  function renderDetail() {
+    const uf = state.selected;
+    const d = state.pres[uf];
+    let html = `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h3 style="font-size:1.5rem">${esc(UFS[uf][0])}</h3><span class="eyebrow">${uf}</span></div>`;
+    html += raceHtml('Presidente', d && d.cands.length ? d : null);
+    if (GOV_UFS.includes(uf)) {
+      const g = state.gov[uf];
+      html += raceHtml('Governador', g && g.cands.length ? g : null, g ? localSlots(g) : null);
+    } else if (uf !== 'ZZ') {
+      html += `<p class="empty">Governador definido no 1º turno.</p>`;
+    }
+    if (d) html += `<div class="facts"><span>Brancos <b class="num">${fmtPct(d.pvb)}</b></span><span>Nulos <b class="num">${fmtPct(d.pvn)}</b></span><span>Abstenção <b class="num">${fmtPct(d.pa)}</b></span></div>`;
+    $('detail').innerHTML = html;
+  }
+
+  function select(uf) {
+    state.selected = uf;
+    render();
+  }
+
+  $('tableBody').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-uf]');
+    if (tr) { select(tr.dataset.uf); $('map').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+  $('tableBody').addEventListener('keydown', e => {
+    const tr = e.target.closest('tr[data-uf]');
+    if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); select(tr.dataset.uf); }
+  });
+  $('refreshBtn').addEventListener('click', () => { countdown = REFRESH_S; refresh(); });
+
+  setInterval(() => {
+    if (document.hidden || state.loading) return;
+    countdown -= 1;
+    if (countdown <= 0) { countdown = REFRESH_S; refresh(); }
+  }, 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.lastOk && Date.now() - state.lastOk > REFRESH_S * 1000) { countdown = REFRESH_S; refresh(); }
+  });
+
+  render();
+  refresh();
+})();
+</script>
+</body>
+</html>
